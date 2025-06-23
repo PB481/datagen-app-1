@@ -82,15 +82,23 @@ def generate_financial_data(num_records=10):
 # --- Functions for MotherDuck Interaction ---
 @st.cache_resource
 def get_motherduck_connection(token):
-    """Establishes and caches the connection to MotherDuck."""
+    """
+    Establishes and caches the connection to MotherDuck, ensuring the target database exists.
+    """
     if not token:
         st.error("MotherDuck API Token is required to connect.")
         return None
     try:
-        # Connect to MotherDuck using the DuckDB client
-        # The 'read_only=False' is important for writing data
-        conn = duckdb.connect(f"md:{MOTHERDUCK_DB_NAME}?motherduck_token={token}", read_only=False)
-        st.success(f"Successfully connected to MotherDuck database: {MOTHERDUCK_DB_NAME}")
+        # First, connect to MotherDuck's default environment
+        # This prevents the "database not found" error if the DB doesn't exist yet.
+        conn = duckdb.connect(f"md:?motherduck_token={token}", read_only=False)
+        st.success("Successfully connected to MotherDuck default environment.")
+
+        # Ensure the target database exists and switch to it
+        conn.execute(f"CREATE DATABASE IF NOT EXISTS {MOTHERDUCK_DB_NAME}")
+        conn.execute(f"USE {MOTHERDUCK_DB_NAME}")
+        st.success(f"Ensured MotherDuck database '{MOTHERDUCK_DB_NAME}' exists and is in use.")
+
         return conn
     except Exception as e:
         st.error(f"Error connecting to MotherDuck: {e}. Please check your token and network.")
@@ -99,6 +107,7 @@ def get_motherduck_connection(token):
 def create_table_if_not_exists(conn, table_name, df):
     """
     Creates a table in MotherDuck based on the DataFrame's schema if it doesn't exist.
+    This will execute within the currently USEd database.
     """
     try:
         # DuckDB's FROM_DF function makes this very convenient.
@@ -114,6 +123,7 @@ def insert_data_into_motherduck(conn, table_name, df, truncate_before_insert=Fal
     """
     Inserts data from a DataFrame into the specified MotherDuck table.
     Optionally truncates the table before inserting.
+    This will execute within the currently USEd database.
     """
     try:
         if truncate_before_insert:
@@ -131,6 +141,7 @@ def insert_data_into_motherduck(conn, table_name, df, truncate_before_insert=Fal
 def fetch_data_from_motherduck(conn, table_name):
     """
     Fetches all data from the specified MotherDuck table.
+    This will execute within the currently USEd database.
     """
     try:
         df = conn.execute(f"SELECT * FROM {table_name} ORDER BY report_date DESC").fetchdf()
