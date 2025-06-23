@@ -5,20 +5,33 @@ import random
 from datetime import datetime, timedelta
 
 # --- Configuration ---
-# IMPORTANT: Replace 'your_motherduck_database_name' with your desired MotherDuck database name.
-# It will be created if it doesn't exist when you first connect.
-MOTHERDUCK_DB_NAME = "my_financial_data_db"
+MOTHERDUCK_DB_NAME = "my_financial_data_db" # The MotherDuck database name
 
-# IMPORTANT: You can set your MotherDuck API Token here directly,
-# but it's much safer to use Streamlit Secrets or environment variables in a real application.
-# For this example, we'll get it from a text input, but be cautious with sensitive info.
-# MOTHERDUCK_TOKEN = "YOUR_MOTHERDUCK_API_TOKEN_HERE"
-
+# Define the supported fund types and their simplified characteristics for data generation
+FUND_TYPES = {
+    "Traditional UCITS": {
+        "description": "Funds regulated by UCITS directives, typically investing in liquid assets like equities and bonds.",
+        "asset_classes": ["Equity", "Fixed Income", "Cash"],
+        "transaction_frequency": {"min": 1, "max": 5}, # Days between transactions
+    },
+    "Private Equity": {
+        "description": "Funds investing in private companies, characterized by illiquid investments and long holding periods.",
+        "asset_classes": ["Private Equity", "Cash"],
+        "transaction_frequency": {"min": 30, "max": 180}, # Days between transactions (less frequent)
+    },
+    # Add other fund types as needed in future iterations
+    # "AIFMD Alternatives Funds": {},
+    # "FOHF": {},
+    # "FOF": {},
+    # "Real Estate": {},
+    # "Crypto Fund": {},
+}
 
 # --- Functions for Data Generation ---
-def generate_financial_data(num_records=10):
+
+def generate_financial_statements(num_records=10):
     """
-    Generates synthetic financial statement data.
+    Generates synthetic basic financial statement data (Income Statement & Balance Sheet).
     Each record represents a month's data.
     """
     data = []
@@ -78,6 +91,95 @@ def generate_financial_data(num_records=10):
             "equity": equity,
         })
     return pd.DataFrame(data)
+
+def generate_securities_transactions(num_transactions, fund_type):
+    """
+    Generates synthetic securities transaction data based on fund type.
+    """
+    transactions = []
+    fund_config = FUND_TYPES.get(fund_type, {})
+    asset_classes = fund_config.get("asset_classes", ["Equity"])
+    min_days_between_tx = fund_config["transaction_frequency"]["min"]
+    max_days_between_tx = fund_config["transaction_frequency"]["max"]
+
+    current_date = datetime(2023, 1, 1)
+
+    for i in range(num_transactions):
+        current_date += timedelta(days=random.randint(min_days_between_tx, max_days_between_tx))
+        security_id = f"SEC{random.randint(1000, 9999)}"
+        transaction_type = random.choice(["BUY", "SELL"])
+        quantity = random.randint(100, 1000)
+        price = round(random.uniform(10.0, 500.0), 2)
+        amount = round(quantity * price, 2)
+        currency = random.choice(["USD", "EUR", "GBP"])
+        asset_class = random.choice(asset_classes)
+
+        transactions.append({
+            "transaction_id": f"TRN{i+1:05d}",
+            "fund_type": fund_type,
+            "transaction_date": current_date.strftime("%Y-%m-%d"),
+            "security_id": security_id,
+            "security_name": f"{asset_class} - {security_id}",
+            "transaction_type": transaction_type,
+            "quantity": quantity,
+            "price": price,
+            "amount": amount,
+            "currency": currency,
+            "asset_class": asset_class,
+        })
+    return pd.DataFrame(transactions)
+
+def generate_portfolio_data(num_securities, fund_type):
+    """
+    Generates synthetic portfolio data based on fund type.
+    """
+    portfolio_holdings = []
+    fund_config = FUND_TYPES.get(fund_type, {})
+    asset_classes = fund_config.get("asset_classes", ["Equity"])
+    valuation_date = datetime.now().strftime("%Y-%m-%d")
+
+    for i in range(num_securities):
+        security_id = f"SEC{random.randint(1000, 9999)}"
+        quantity = random.randint(500, 5000)
+        cost_basis = round(random.uniform(50.0, 400.0), 2)
+        current_price = round(random.uniform(cost_basis * 0.8, cost_basis * 1.2), 2) # Price fluctuation
+        market_value = round(quantity * current_price, 2)
+        unrealized_gain_loss = round(market_value - (quantity * cost_basis), 2)
+        currency = random.choice(["USD", "EUR", "GBP"])
+        asset_class = random.choice(asset_classes)
+
+        portfolio_holdings.append({
+            "portfolio_date": valuation_date,
+            "fund_type": fund_type,
+            "security_id": security_id,
+            "security_name": f"{asset_class} - {security_id}",
+            "asset_class": asset_class,
+            "quantity": quantity,
+            "cost_basis": cost_basis,
+            "current_price": current_price,
+            "market_value": market_value,
+            "unrealized_gain_loss": unrealized_gain_loss,
+            "currency": currency,
+        })
+    return pd.DataFrame(portfolio_holdings)
+
+# --- Centralized Report Generation Dispatcher ---
+def generate_selected_reports(fund_type, num_records_per_report, reports_to_generate_list):
+    """
+    Dispatches calls to appropriate generation functions based on selected reports.
+    Returns a dictionary of {table_name: DataFrame}.
+    """
+    generated_reports_dfs = {}
+
+    if "Financial Statements" in reports_to_generate_list:
+        generated_reports_dfs["financial_statements"] = generate_financial_statements(num_records_per_report)
+    if "Securities Transactions" in reports_to_generate_list:
+        generated_reports_dfs["securities_transactions"] = generate_securities_transactions(num_records_per_report * 5, fund_type) # More transactions than general statements
+    if "Portfolio Holdings" in reports_to_generate_list:
+        generated_reports_dfs["portfolio_holdings"] = generate_portfolio_data(num_records_per_report, fund_type)
+    # Add conditions for other report types here as their generation functions are implemented
+
+    return generated_reports_dfs
 
 # --- Functions for MotherDuck Interaction ---
 @st.cache_resource
@@ -144,7 +246,7 @@ def fetch_data_from_motherduck(conn, table_name):
     This will execute within the currently USEd database.
     """
     try:
-        df = conn.execute(f"SELECT * FROM {table_name} ORDER BY report_date DESC").fetchdf()
+        df = conn.execute(f"SELECT * FROM {table_name}").fetchdf() # Removed ORDER BY for general fetch
         st.success(f"Successfully fetched {len(df)} records from '{table_name}'.")
         return df
     except Exception as e:
@@ -156,15 +258,25 @@ st.set_page_config(layout="wide", page_title="Financial Data Generator for Mothe
 
 st.title("💰 Financial Data Generator & MotherDuck Uploader")
 st.markdown("""
-This app generates synthetic financial statement data (Income Statement & Balance Sheet)
-and uploads it to your MotherDuck database.
+This app generates synthetic financial data for various fund types and report categories,
+then uploads it to your MotherDuck database.
 """)
 
-# Input for MotherDuck API Token
+# Input for MotherDuck API Token (using st.secrets for persistence)
 st.sidebar.header("MotherDuck Configuration")
-motherduck_token = st.sidebar.text_input(
-    "Enter your MotherDuck API Token:", type="password", help="Find this in your MotherDuck Dashboard under 'Settings'."
-)
+motherduck_token = None
+if "MOTHERDUCK_TOKEN" in st.secrets:
+    motherduck_token = st.secrets["MOTHERDUCK_TOKEN"]
+    st.sidebar.success("MotherDuck API Token loaded from secrets.toml")
+else:
+    # Fallback to manual input if not in secrets (for local development without secrets.toml)
+    motherduck_token = st.sidebar.text_input(
+        "Enter your MotherDuck API Token:", type="password",
+        help="Paste your token here. For production, add it to `.streamlit/secrets.toml`."
+    )
+    if not motherduck_token:
+        st.sidebar.warning("Please enter your MotherDuck API Token or configure `secrets.toml`.")
+
 
 # Connect to MotherDuck
 conn = None
@@ -174,54 +286,100 @@ if motherduck_token:
 # Main App Logic
 if conn:
     st.header("Generate and Upload Data")
-    num_records_to_generate = st.slider(
-        "Number of monthly records to generate:", min_value=1, max_value=120, value=12, step=1
+
+    # Fund Type Selection
+    selected_fund_type = st.selectbox(
+        "Select Fund Type:",
+        options=list(FUND_TYPES.keys()),
+        index=0,
+        help="Choose the type of fund for which to generate data."
     )
-    table_name = st.text_input("MotherDuck Table Name:", value="financial_statements")
-    truncate_option = st.checkbox(
-        "Clear existing data before uploading?",
-        help="If checked, all existing data in the table will be deleted before new data is inserted. Use with caution!",
+    st.info(FUND_TYPES[selected_fund_type]["description"])
+
+
+    # Report Selection
+    available_reports = [
+        "Financial Statements",
+        "Securities Transactions",
+        "Portfolio Holdings",
+        # Add more reports here as their generation functions are implemented
+    ]
+    reports_to_generate_selected = st.multiselect(
+        "Select Reports to Generate:",
+        options=available_reports,
+        default=["Financial Statements"],
+        help="Choose which financial reports to generate data for."
+    )
+
+    num_records_per_report = st.slider(
+        "Base number of records per report (approx. months/items):", min_value=1, max_value=120, value=12, step=1
+    )
+
+    truncate_all_selected_tables = st.checkbox(
+        "Clear existing data from all selected report tables before uploading?",
+        help="If checked, all existing data in the tables corresponding to the selected reports will be deleted before new data is inserted. Use with extreme caution!",
         value=False
     )
 
-    if st.button("Generate & Upload Data to MotherDuck"):
-        if table_name:
-            st.subheader("Generating Data...")
-            generated_df = generate_financial_data(num_records_to_generate)
-            st.write("Preview of Generated Data:")
-            st.dataframe(generated_df)
-
-            st.subheader(f"Uploading to MotherDuck table '{table_name}'...")
-            if create_table_if_not_exists(conn, table_name, generated_df):
-                if insert_data_into_motherduck(conn, table_name, generated_df, truncate_option):
-                    st.success("Data generation and upload process completed!")
-                else:
-                    st.error("Data insertion failed.")
-            else:
-                st.error("Table creation failed, cannot proceed with insertion.")
+    if st.button("Generate & Upload Selected Reports to MotherDuck"):
+        if not reports_to_generate_selected:
+            st.warning("Please select at least one report to generate.")
         else:
-            st.warning("Please enter a table name.")
+            st.subheader(f"Generating Data for {selected_fund_type}...")
+            generated_data_dfs = generate_selected_reports(
+                selected_fund_type, num_records_per_report, reports_to_generate_selected
+            )
+
+            if generated_data_dfs:
+                st.write("Preview of Generated Data (First Report):")
+                # Show preview of the first generated dataframe
+                first_report_name = list(generated_data_dfs.keys())[0]
+                st.dataframe(generated_data_dfs[first_report_name].head())
+                st.info(f"Showing first 5 rows of '{first_report_name}' table preview.")
+
+                st.subheader("Uploading to MotherDuck...")
+                for report_table_name, df_to_upload in generated_data_dfs.items():
+                    st.write(f"Processing table: `{report_table_name}`")
+                    if create_table_if_not_exists(conn, report_table_name, df_to_upload):
+                        insert_data_into_motherduck(
+                            conn, report_table_name, df_to_upload, truncate_all_selected_tables
+                        )
+                    else:
+                        st.error(f"Failed to create/ensure table '{report_table_name}'. Skipping data insertion.")
+                st.success("All selected report data generation and upload processes completed!")
+            else:
+                st.warning("No data was generated. Please check your selections.")
 
     st.markdown("---")
     st.header("View Data in MotherDuck")
-    if st.button(f"Fetch Data from '{table_name}'"):
-        if table_name:
-            fetched_df = fetch_data_from_motherduck(conn, table_name)
-            if not fetched_df.empty:
-                st.dataframe(fetched_df)
-                st.download_button(
-                    label="Download Data as CSV",
-                    data=fetched_df.to_csv(index=False).encode('utf-8'),
-                    file_name=f"{table_name}_data.csv",
-                    mime="text/csv",
-                )
-            else:
-                st.info("No data found or an error occurred while fetching.")
+
+    # Dropdown to select which table to view
+    table_options_for_view = [
+        "financial_statements",
+        "securities_transactions",
+        "portfolio_holdings",
+        # Add more report table names here
+    ]
+    selected_table_to_view = st.selectbox(
+        "Select a report table to view data from MotherDuck:",
+        options=table_options_for_view,
+        index=0,
+        help="Choose which table's data to fetch and display."
+    )
+
+    if st.button(f"Fetch Data from '{selected_table_to_view}'"):
+        fetched_df = fetch_data_from_motherduck(conn, selected_table_to_view)
+        if not fetched_df.empty:
+            st.dataframe(fetched_df)
+            st.download_button(
+                label=f"Download {selected_table_to_view} as CSV",
+                data=fetched_df.to_csv(index=False).encode('utf-8'),
+                file_name=f"{selected_table_to_view}_data.csv",
+                mime="text/csv",
+            )
         else:
-            st.warning("Please enter a table name to fetch data.")
+            st.info(f"No data found in '{selected_table_to_view}' or an error occurred while fetching.")
 
 else:
-    st.info("Please enter your MotherDuck API Token in the sidebar to get started.")
+    st.info("Please ensure your MotherDuck API Token is correctly configured to get started.")
 
-# Close the connection when the app closes (Streamlit handles this implicitly for st.cache_resource)
-# For more explicit control, one might add a st.stop() or more complex session management.
