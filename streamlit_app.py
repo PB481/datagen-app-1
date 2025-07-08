@@ -848,6 +848,68 @@ def generate_genie_fx_rates(num_days):
     return pd.DataFrame(fx_rates)
 
 
+def generate_nav_waterfall_data(fund_info, num_periods=1):
+    waterfall_data = []
+    start_nav = round(random.uniform(fund_info["target_aum_min"] * 0.9, fund_info["target_aum_max"] * 1.1), 2)
+    
+    for i in range(num_periods):
+        # Simulate changes for a period (e.g., a month or quarter)
+        subscriptions = round(start_nav * random.uniform(0.01, 0.05), 2)
+        redemptions = round(start_nav * random.uniform(0.005, 0.03), 2)
+        investment_gains = round(start_nav * random.uniform(0.02, 0.08), 2)
+        fees = round(start_nav * random.uniform(0.001, 0.005), 2)
+        
+        end_nav = start_nav + subscriptions - redemptions + investment_gains - fees
+        
+        waterfall_data.append({"fund_id": fund_info["fund_id"], "category": "Start NAV", "value": start_nav, "type": "start"})
+        waterfall_data.append({"fund_id": fund_info["fund_id"], "category": "Subscriptions", "value": subscriptions, "type": "positive"})
+        waterfall_data.append({"fund_id": fund_info["fund_id"], "category": "Redemptions", "value": -redemptions, "type": "negative"})
+        waterfall_data.append({"fund_id": fund_info["fund_id"], "category": "Investment Gains", "value": investment_gains, "type": "positive"})
+        waterfall_data.append({"fund_id": fund_info["fund_id"], "category": "Fees", "value": -fees, "type": "negative"})
+        waterfall_data.append({"fund_id": fund_info["fund_id"], "category": "End NAV", "value": end_nav, "type": "end"})
+        
+        start_nav = end_nav # For next period if num_periods > 1
+        
+    return pd.DataFrame(waterfall_data)
+
+def generate_nav_sankey_data(fund_info, num_flows=10):
+    sankey_links = []
+    
+    # Define some common nodes for a fund's financial flows
+    nodes = [
+        "Investors", "Fund Capital", "Investment Portfolio", "Equities", "Fixed Income",
+        "Cash & Equivalents", "Operating Expenses", "Management Fees", "Performance Fees",
+        "Distributions", "Redemptions", "Market Gains/Losses"
+    ]
+    
+    # Simulate flows
+    fund_id = fund_info["fund_id"]
+    
+    # Initial Capital Inflow
+    sankey_links.append({"fund_id": fund_id, "source": "Investors", "target": "Fund Capital", "value": random.uniform(500_000_000, 1_000_000_000)})
+    
+    # Allocation from Fund Capital to Portfolio
+    sankey_links.append({"fund_id": fund_id, "source": "Fund Capital", "target": "Investment Portfolio", "value": random.uniform(400_000_000, 900_000_000)})
+    
+    # Portfolio Breakdown
+    sankey_links.append({"fund_id": fund_id, "source": "Investment Portfolio", "target": "Equities", "value": random.uniform(200_000_000, 500_000_000)})
+    sankey_links.append({"fund_id": fund_id, "source": "Investment Portfolio", "target": "Fixed Income", "value": random.uniform(100_000_000, 300_000_000)})
+    sankey_links.append({"fund_id": fund_id, "source": "Investment Portfolio", "target": "Cash & Equivalents", "value": random.uniform(50_000_000, 150_000_000)})
+    
+    # Gains/Losses
+    sankey_links.append({"fund_id": fund_id, "source": "Market Gains/Losses", "target": "Investment Portfolio", "value": random.uniform(10_000_000, 50_000_000)})
+    
+    # Expenses
+    sankey_links.append({"fund_id": fund_id, "source": "Investment Portfolio", "target": "Operating Expenses", "value": random.uniform(1_000_000, 5_000_000)})
+    sankey_links.append({"fund_id": fund_id, "source": "Investment Portfolio", "target": "Management Fees", "value": random.uniform(5_000_000, 20_000_000)})
+    sankey_links.append({"fund_id": fund_id, "source": "Investment Portfolio", "target": "Performance Fees", "value": random.uniform(0, 10_000_000)})
+    
+    # Outflows
+    sankey_links.append({"fund_id": fund_id, "source": "Investment Portfolio", "target": "Distributions", "value": random.uniform(10_000_000, 50_000_000)})
+    sankey_links.append({"fund_id": fund_id, "source": "Fund Capital", "target": "Redemptions", "value": random.uniform(20_000_000, 100_000_000)})
+    
+    return pd.DataFrame(sankey_links)
+
 # --- Centralized Report Generation Dispatcher ---
 def generate_selected_reports(fund_type_filter, num_records_per_report, reports_to_generate_list):
     generated_reports_dfs = {}
@@ -912,6 +974,11 @@ def generate_selected_reports(fund_type_filter, num_records_per_report, reports_
     if "Genie - FX Rates" in reports_to_generate_list:
         generated_reports_dfs["genie_fx_rates"] = generate_genie_fx_rates(num_records_per_report * 5)
 
+    # New: NAV Waterfall and Sankey Data
+    if "NAV Change Attribution" in reports_to_generate_list:
+        generated_reports_dfs["nav_waterfall_data"] = generate_nav_waterfall_data(selected_fund_info)
+    if "NAV Data Flow" in reports_to_generate_list:
+        generated_reports_dfs["nav_sankey_data"] = generate_nav_sankey_data(selected_fund_info)
 
     return generated_reports_dfs
 
@@ -1015,7 +1082,9 @@ if conn:
         "Genie - Custody Holdings",
         "Genie - Fund Accounting Trial Balance",
         "Genie - Corporate Actions",
-        "Genie - FX Rates"
+        "Genie - FX Rates",
+        "NAV Change Attribution", # New
+        "NAV Data Flow" # New
     ]
     reports_to_generate_selected = st.multiselect(
         "Select Reports to Generate:",
@@ -1076,7 +1145,9 @@ if conn:
         "ta_cash_net_activity", "mifid_transaction_report", "genie_trade_orders",
         "genie_executed_trades", "genie_daily_security_prices", "genie_fund_characteristics",
         "genie_fund_daily_nav", "genie_custody_holdings", "genie_fund_accounting_trial_balance",
-        "genie_corporate_actions", "genie_fx_rates"
+        "genie_corporate_actions", "genie_fx_rates",
+        "nav_waterfall_data", # New
+        "nav_sankey_data" # New
     ]
     selected_table_to_view = st.selectbox(
         "Select a report table to view data from MotherDuck:",
